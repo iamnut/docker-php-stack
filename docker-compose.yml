@@ -1,0 +1,84 @@
+version: "3.5"
+
+x-logging:
+  &default-loggin
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "2"
+
+networks:
+  phpstack-net:
+    name: phpstack-net
+    driver: bridge
+    ipam:
+      driver: default
+
+services:
+  phpstack-webserver:
+    build:
+      context: ./.docker/apache-php
+      dockerfile: Dockerfile
+    image: phpstack-webserver:r1
+    container_name: phpstack-webserver
+    logging: *default-loggin
+    restart: always
+    labels:
+      - "container.monitoring.app=phpstack-webserver"
+    volumes:
+      - ./webroot.d:/var/www/html
+    environment:
+      - TZ=Asia/Bangkok
+    networks:
+      - phpstack-net
+    ports:
+      - 10180:80
+
+  phpstack-mariadb:
+    container_name: phpstack-mariadb
+    image: mariadb:10.3.15-bionic
+    logging: *default-loggin
+    restart: always
+    labels:
+      - "container.monitoring.app=phpstack-mariadb"
+    volumes:
+      - ./mariadb/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+      - ./mariadb/data:/var/lib/mysql
+    environment:
+      - TZ=Asia/Bangkok
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    networks:
+      - phpstack-net
+
+  phpstack-phpmyadmin:
+    container_name: phpstack-phpmyadmin
+    image: phpmyadmin/phpmyadmin:4.8
+    logging: *default-loggin
+    restart: always
+    labels:
+      - "container.monitoring.app=phpstack-phpmyadmin"
+    environment:
+      - PMA_HOST=phpstack-mariadb
+      - PMA_PORT=3306
+      - PMA_ABSOLUTE_URI=/phpmyadmin/
+    networks:
+      - phpstack-net
+    ports:
+      - 10181:80
+    depends_on:
+      - phpstack-mariadb
+
+  phpstack-sshserver:
+    container_name: phpstack-sshserver
+    image: atmoz/sftp:debian
+    logging: *default-loggin
+    restart: always
+    labels:
+      - "container.monitoring.app=phpstack-sshserver"
+    volumes:
+      - ./webroot.d:/home/developer/webroot
+    ports:
+      - "10122:22"
+    networks:
+      - phpstack-net
+    command: ${SFTP_USERNAME}:${SFTP_PASSWORD}:33:33:webroot
